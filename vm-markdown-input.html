@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vote Manager Fancy Inputs</title>
+    <style>
+        @layer boilerplate, snippet;
+
+        @layer boilerplate {
+            *, ::before, ::after {
+                box-sizing: border-box;
+            }
+            html {
+                height: 100%;
+                color-scheme: dark;
+            }
+            body {
+                height: 100%;
+                font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            }
+            main {
+                margin-inline: auto;
+                padding-block: 50px;
+                max-width: 1000px;
+            }
+        }
+
+        @layer snippet {
+            [data-input-features] {
+                background: #444;
+                border: 1px solid #555;
+                border-radius: 5px;
+                outline: 2px solid var(--_outline);
+                margin: 0;
+                padding: 7px 10px;
+                display: flex;
+                width: 100%;
+                height: 40px;
+                font: inherit;
+                transition: .3s;
+                resize: none;
+
+                display: inline-block;
+                /* white-space: pre; */
+                overflow: scroll;
+            }
+            [data-input-features]:focus-visible {
+                --_outline: steelblue;
+            }
+            [data-input-features].big {
+                height: 130px;
+            }
+            [data-input-features] .md-token {
+                font-weight: 400;
+                color: gray;
+            }
+            [data-input-features] .variable {
+                font-family: monospace;
+                color: steelblue;
+            }
+            [data-input-features] code {
+                background: steelblue;
+                border-radius: 5px;
+                padding: 3px 1px;
+            }
+        }
+    </style>
+</head>
+<body>
+<main>
+    <label>Textarea</label>
+    <pre class="big" role="textbox" aria-multiline="true" data-input-features="markdown variables.text mentions" contenteditable="true"></pre>
+    <label>Input</label>
+    <div role="textbox" aria-multiline="false" data-input-features="markdown.inline variables.text" contenteditable="true"></div>
+</main>
+<script>
+    const input = document.querySelector(".big");
+    document.querySelectorAll("[contenteditable][data-input-features]").forEach(x => {
+        x.addEventListener("input", () => {
+            const sel = window.getSelection();
+            const node = sel.focusNode;
+            const offset = sel.focusOffset;
+            const pos = getCursorPosition(x, node, offset, { pos: 0, done: false });
+            if (offset === 0) pos.pos += 0.5;
+
+            const features = x.dataset?.inputFeatures?.split(" ") ?? [];
+            x.innerHTML = x.innerHTML.replaceAll(/<\/?(span|strong|em|ins|code) ?(class="(md-token|variable)")? ?(spellcheck="false")?>/g, "");
+            if (features.includes("markdown") || features.includes("markdown.inline")) {
+                x.innerHTML = x.innerHTML
+                .replaceAll(/\*{2}(.*?)\*{2}/g, `<span class="md-token">**</span><strong>$1</strong><span class="md-token">**</span>`)
+                .replaceAll(/(?<!\*)\*(?!\*)(.*?)(?<!\*)\*(?!\*)/g, `<span class="md-token">*</span><em>$1</em><span class="md-token">*</span>`)
+                .replaceAll(/__([^_]+)__/g, `<span class="md-token">__</span><ins>$1</ins><span class="md-token">__</span>`)
+                .replaceAll(/`([^`]+)`/g, `<span class="md-token">\`</span><code>$1</code><span class="md-token">\`</span>`)
+            };
+            if (features.includes("variables") || features.includes("variables.text") || features.includes("variables.image") || features.includes("variables.url")) {
+                x.innerHTML = x.innerHTML
+                    .replaceAll(/\{([a-zA-Z_\.]+)\}/g, `<span class="md-token">{</span><span class="variable" spellcheck="false">$1</span><span class="md-token">}</span>`)
+                    .replaceAll(/\{([a-zA-Z_\.]+):([a-z0-9]{8})\}/g, `<span class="md-token">{</span><span class="variable" spellcheck="false">$1</span><span class="md-token">:</span><span class="variable" spellcheck="false">$2</span><span class="md-token">}</span>`)
+            };
+
+            sel.removeAllRanges();
+            const range = setCursorPosition(x, document.createRange(), {
+                pos: pos.pos,
+                done: false,
+            });
+            range.collapse(true);
+            sel.addRange(range);
+        });
+    });
+
+    function getCursorPosition(parent, node, offset, stat) {
+        if (stat.done) return stat;
+
+        let currentNode = null;
+        if (parent.childNodes.length == 0) {
+            stat.pos += (parent.innerText?.length ?? parent.textContent?.length ?? 0);
+        } else {
+            for (let i = 0; i < parent.childNodes.length && !stat.done; i++) {
+                currentNode = parent.childNodes[i];
+                console.log(currentNode);
+                if (currentNode.nodeType === Node.TEXT_NODE) {
+                    if (currentNode === node) {
+                        stat.pos += offset;
+                        stat.done = true;
+                        return stat;
+                    } else {
+                        stat.pos += (currentNode.innerText?.length ?? currentNode.textContent?.length ?? 0);
+                    }
+                } else {
+                    stat = getCursorPosition(currentNode, node, offset, stat);
+                }
+            }
+        }
+        return stat;
+    }
+
+    function setCursorPosition(parent, range, stat) {
+        if (stat.done) return range;
+        let currentNode;
+
+        if (parent.childNodes.length == 0) {
+            if ((parent.innerText?.length ?? parent.textContent?.length ?? 0) >= stat.pos) {
+                range.setStart(parent, stat.pos);
+                stat.done = true;
+            } else {
+                stat.pos = stat.pos - (parent.innerText?.length ?? parent.textContent?.length ?? 0);
+            };
+        } else {
+            for (let i = 0; i < parent.childNodes.length && !stat.done; i++) {
+                currentNode = parent.childNodes[i];
+                if (currentNode.nodeType === Node.TEXT_NODE) {
+                    if ((currentNode.innerText?.length ?? currentNode.textContent?.length ?? 0) >= stat.pos) {
+                        range.setStart(currentNode, stat.pos);
+                        stat.done = true;
+                    } else {
+                        stat.pos = stat.pos - (currentNode.innerText?.length ?? currentNode.textContent?.length ?? 0);
+                    }
+                } else {
+                    range = setCursorPosition(currentNode, range, stat);
+                }
+            };
+        };
+        return range;
+    };
+</script>
+</body>
+</html>
